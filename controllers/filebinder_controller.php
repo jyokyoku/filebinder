@@ -20,6 +20,7 @@ class FilebinderController extends FilebinderAppController {
         $this->layout = false;
         $this->autoRender = false;
         Configure::write('debug', 0);
+        $model = Inflector::camelize($model);
 
         if (!$model || $model_id == null || !$fieldName || !$hash) {
             return;

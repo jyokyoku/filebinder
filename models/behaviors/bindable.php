@@ -1,4 +1,6 @@
 <?php
+App::import('Core', 'Folder');
+
 class BindableBehavior extends ModelBehavior {
 
     var $settings = array();
@@ -18,6 +20,10 @@ class BindableBehavior extends ModelBehavior {
                           'afterAttach' => null, // hook function
                           'withObject' => false, // find attachment with file object
                           'exchangeFile' => true, // save new file after deleting old file
+                          'cacheDir' => WWW_ROOT . 'cache' . DS, // directory of the cache file
+                          'cacheDirLevel' => 1, // cache directory level
+                          'mode' => 0644, // create file mode
+                          'dirMode' => 0755, // create directory mode
                           );
 
         $defaultRuntime = array('bindedModel' => null,
@@ -330,13 +336,11 @@ class BindableBehavior extends ModelBehavior {
         $bindFields = Set::combine($model->bindFields, '/field' , '/');
         $result = true;
         foreach ($bindFields as $fieldName => $value) {
-            $filePath = empty($value['filePath']) ? $this->settings[$model->alias]['filePath'] : $value['filePath'];
-            $bindFile = $filePath . $model->transferTo(array_diff_key(
-                $deleteFields[$fieldName],
-                Set::normalize(array('file_path', 'bindedModel'))
-            ));
-            $bindDir = dirname($bindFile);
-            if (!$this->_recursiveRemoveDir($bindDir)) {
+            $baseDir = empty($value['filePath']) ? $this->settings[$model->alias]['filePath'] : $value['filePath'];
+            $filePath = $baseDir . $model->transferTo($deleteFields[$fieldName]);
+            $cacheDir = $this->_generateCacheDirPath($model, $filePath);
+
+            if (!@unlink($filePath) || !$this->_recursiveRemoveDir($cacheDir)) {
                 $result = false;
             }
         }
@@ -352,18 +356,35 @@ class BindableBehavior extends ModelBehavior {
      * @return
      * @access protected
      */
-    function _recursiveRemoveDir($dir) {
-        if (is_dir($dir)) {
-            $objects = scandir($dir);
-            foreach ($objects as $object) {
-                if ($object != "." && $object != "..") {
-                    if (filetype($dir."/".$object) == "dir") $this->_recursiveRemoveDir($dir."/".$object); else unlink($dir."/".$object);
-                }
-            }
-            reset($objects);
-            return rmdir($dir);
+    function _recursiveRemoveDir($dir, $safe = false){
+        if (!is_dir($dir)) {
+            return false;
         }
-        return false;
+
+        $Folder =& new Folder($dir, false);
+        list($dirs, $files) = $Folder->read(false, false, true);
+
+        if ($dirs) {
+            foreach ($dirs as $_dir) {
+                $this->_recursiveRemoveDir($_dir, $safe, false);
+            }
+        }
+
+        if (!$safe && $files) {
+            foreach ($files as $file) {
+                @unlink($file);
+            }
+        }
+
+        if ($safe) {
+            list($dirs, $files) = $Folder->read(false, false, true);
+        }
+
+        if (!$safe || (empty($files) && empty($dirs))) {
+            return @rmdir($dir);
+        }
+
+        return true;
     }
 
     /**
@@ -741,6 +762,9 @@ class BindableBehavior extends ModelBehavior {
                     $baseDir = empty($bindFields[$fieldName]['filePath']) ? $this->settings[$model->alias]['filePath'] : $bindFields[$fieldName]['filePath'];
                     $filePath = $baseDir . $model->transferTo(array_diff_key($bind, Set::normalize(array('file_object'))));
                     $bind['file_path'] = $filePath;
+                    $bind['cache_dir'] = $this->_generateCacheDirPath($model, $filePath);
+                    $bind['mode'] = $this->settings[$model->alias]['mode'];
+                    $bind['dir_mode'] = $this->settings[$model->alias]['dirMode'];
                     $bind['bindedModel'] = $this->runtime[$model->alias]['bindedModel']->alias;
                     $tmpData[$key][$modelName][$fieldName] = $bind;
 
@@ -800,5 +824,33 @@ class BindableBehavior extends ModelBehavior {
         }
 
         return $data;
+    }
+
+    /**
+     * Generate cache directory path
+     *
+     * @param string $filePath The absolute file path
+     * @return string
+     */
+    function _generateCacheDirPath(&$model, $filePath){
+        $hash = Security::hash($filePath, 'md5');
+        $cacheBaseDir = Folder::slashTerm($this->settings[$model->alias]['cacheDir']);
+
+        if ($this->settings[$model->alias]['cacheDirLevel'] > 0) {
+            $level = (strlen($hash) < $this->settings[$model->alias]['cacheDirLevel'])
+                   ? strlen($hash) - 1
+                   : $this->settings[$model->alias]['cacheDirLevel'];
+
+            for ($i = 0; $i < $level; $i++) {
+                $cacheBaseDir .= $hash{$i};
+            }
+
+            $cacheBaseDir .= DS . substr($hash, $i + 1);
+
+        } else {
+            $cacheBaseDir .= $hash;
+        }
+
+        return $cacheBaseDir . DS;
     }
 }
