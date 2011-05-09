@@ -28,7 +28,6 @@ class BindableBehavior extends ModelBehavior {
 
         $defaultRuntime = array('bindedModel' => null,
                                 'primaryKey' => 'id',
-                                'deleteFields' => array(),
                                 );
 
         // Default settings
@@ -139,10 +138,7 @@ class BindableBehavior extends ModelBehavior {
                  * dbStorage
                  */
                 if ($this->settings[$model->alias]['dbStorage']) {
-                    $fp = fopen($tmpFile, 'r');
-                    $ofile = fread($fp, filesize($tmpFile));
-                    fclose($fp);
-                    $bind['file_object'] = base64_encode($ofile);
+                    $bind['file_object'] = base64_encode(file_get_contents($tmpFile));
                 }
             }
 
@@ -199,31 +195,27 @@ class BindableBehavior extends ModelBehavior {
                 continue;
             }
 
-            $filePath = empty($bindFields[$fieldName]['filePath']) ? $this->settings[$model->alias]['filePath'] : $bindFields[$fieldName]['filePath'];
             if ($delete || (!$created && !empty($value['tmp_bind_path']))) {
                 unset($model->data[$modelName]['delete_' . $fieldName]);
 
-                if (
-                    ($delete || $this->settings[$model->alias]['exchangeFile'])
-                    && ($currentBindedFields = $this->_findBindedFields($model, $model_id, $fieldName))
-                ) {
-                    $this->runtime[$model->alias]['deleteFields'] = $currentBindedFields;
-                    $this->deleteEntity($model);
-                }
+                if ($delete || $this->settings[$model->alias]['exchangeFile']) {
+                    $this->deleteEntity($model, $model_id, $fieldName);
 
-                $this->runtime[$model->alias]['bindedModel']->deleteAll(array(
-                    'model' => $modelName,
-                    'model_id' => $model_id,
-                    'field_name' => $fieldName
-                ));
+                } else {
+                    $this->runtime[$model->alias]['bindedModel']->deleteAll(array(
+                        'model' => $modelName,
+                        'model_id' => $model_id,
+                        'field_name' => $fieldName
+                    ));
+                }
             }
 
             if (!is_array($value) || empty($value['tmp_bind_path'])) {
                 continue;
             }
 
-            $bindFile = $filePath . $model->transferTo(array_diff_key(array('model_id' => $model_id) + $value, Set::normalize(array('tmp_bind_path'))));
-            $bindDir = dirname($bindFile);
+            $baseDir = empty($bindFields[$fieldName]['filePath']) ? $this->settings[$model->alias]['filePath'] : $bindFields[$fieldName]['filePath'];
+            $filePath = $baseDir . $model->transferTo(array_diff_key(array('model_id' => $model_id) + $value, Set::normalize(array('tmp_bind_path'))));
 
             $bind = array();
             $bind['id'] = $value['id'];
@@ -237,17 +229,19 @@ class BindableBehavior extends ModelBehavior {
             $tmpFile = $value['tmp_bind_path'];
 
             if (file_exists($tmpFile)) {
-                if (!is_dir($bindDir)) {
-                    mkdir($bindDir, 0755, true);
+                if (!is_dir(dirname($filePath))) {
+                    mkdir(dirname($filePath), $this->settings[$model->alias]['dirMode'], true);
                 }
-                rename($tmpFile, $bindFile);
+                if (!rename($tmpFile, $filePath) || !chmod($filePath, $this->settings[$model->alias]['mode'])) {
+                    return false;
+                }
             }
-            if ($bindFile && file_exists($bindFile)) {
+            if ($filePath && file_exists($filePath)) {
                 /**
                  * afterAttach
                  */
                 if (!empty($this->settings[$model->alias]['afterAttach'])) {
-                    $res = $this->_userfunc($model, $this->settings[$model->alias]['afterAttach'], array($bindFile));
+                    $res = $this->_userfunc($model, $this->settings[$model->alias]['afterAttach'], array($filePath));
                     if (!$res) {
                         return false;
                     }
@@ -258,24 +252,13 @@ class BindableBehavior extends ModelBehavior {
     }
 
     /**
-     * beforeDelete
-     *
-     * @param &$model
-     * @return
-     */
-    function beforeDelete(&$model){
-        $this->runtime[$model->alias]['deleteFields'] = $this->_findBindedFields($model, $model->id);
-        return true;
-    }
-
-    /**
      * afterDelete
      *
      * @param &$model
      * @return
      */
     function afterDelete(&$model){
-        return $this->deleteEntity($model);
+        return $this->deleteEntity($model, $model->id);
     }
 
     /**
@@ -318,30 +301,31 @@ class BindableBehavior extends ModelBehavior {
      * @param mixed $modelId The model id
      * @return
      */
-    function deleteEntity(&$model, $modelId = null){
-        $deleteFields = array();
-
-        if ($modelId) {
-            $deleteFields = $this->_findBindedFields($model, $modelId);
-
-        } else if (!empty($this->runtime[$model->alias]['deleteFields'])) {
-            $deleteFields = $this->runtime[$model->alias]['deleteFields'];
-            $this->runtime[$model->alias]['deleteFields'] = array();
-        }
-
-        if (!$deleteFields) {
+    function deleteEntity(&$model, $modelId, $fields = array()){
+        if (!$deleteFields = $this->_findBindedFields($model, $modelId, $fields)) {
             return false;
         }
 
-        $bindFields = Set::combine($model->bindFields, '/field' , '/');
-        $result = true;
-        foreach ($bindFields as $fieldName => $value) {
-            $baseDir = empty($value['filePath']) ? $this->settings[$model->alias]['filePath'] : $value['filePath'];
-            $filePath = $baseDir . $model->transferTo($deleteFields[$fieldName]);
-            $cacheDir = $this->_generateCacheDirPath($model, $filePath);
+        $result = $this->runtime[$model->alias]['bindedModel']->deleteAll(array(
+            'model' => $model->alias,
+            'model_id' => $modelId,
+            'field_name' => array_keys($deleteFields)
+        ));
 
-            if (!@unlink($filePath) || !$this->_recursiveRemoveDir($cacheDir)) {
-                $result = false;
+        if ($result) {
+            $bindFields = Set::combine($model->bindFields, '/field' , '/');
+            foreach ($bindFields as $fieldName => $value) {
+                if (!isset($deleteFields[$fieldName])) {
+                    continue;
+                }
+
+                $baseDir = empty($value['filePath']) ? $this->settings[$model->alias]['filePath'] : $value['filePath'];
+                $filePath = $baseDir . $model->transferTo($deleteFields[$fieldName]);
+                $cacheDir = $this->_generateCacheDirPath($model, $filePath);
+
+                if (!@unlink($filePath) || !$this->_recursiveRemoveDir($cacheDir)) {
+                    $result = false;
+                }
             }
         }
 
@@ -435,7 +419,7 @@ class BindableBehavior extends ModelBehavior {
 
         $tmpFilePath = empty($file['tmp_bind_path']) ? $file['file_path'] : $file['tmp_bind_path'];
 
-        $regexp = '/\.(' . implode('|', (array) $extension) . ')$/';
+        $regexp = '/\.(' . implode('|', (array) $extension) . ')$/i';
         if (!preg_match($regexp, $tmpFilePath)) {
             return false;
         }
@@ -579,11 +563,7 @@ class BindableBehavior extends ModelBehavior {
             return false;
         }
 
-        if (function_exists($func)) {
-            $result = call_user_func($func, $tmpFilePath);
-        } else {
-            $result = call_user_func(array($model, $func), $tmpFilePath);
-        }
+        $result = $this->_userfunc($model, $func, array($tmpFilePath));
 
         return $result;
     }
@@ -714,6 +694,11 @@ class BindableBehavior extends ModelBehavior {
         } else if (isset($data[$model->primaryKey])) {
             $tmpData = array(array($model->alias => $data));
 
+        } else if (isset($data[0][$model->primaryKey])) {
+            foreach ($data as $i => $_data) {
+                $tmpData[$i] = array($model->alias => $_data);
+            }
+
         } else {
             $tmpData = $data;
         }
@@ -785,10 +770,19 @@ class BindableBehavior extends ModelBehavior {
                         }
 
                         if (!is_dir(dirname($filePath))) {
-                            mkdir(dirname($filePath), 0755, true);
+                            mkdir(dirname($filePath), $this->settings[$model->alias]['dirMode'], true);
                         }
 
-                        file_put_contents($filePath, base64_decode($fileObject));
+                        if (file_exists($filePath)) {
+                            unlink($filePath);
+                        }
+
+                        if (
+                            !file_put_contents($filePath, base64_decode($fileObject))
+                            || !chmod($filePath, $this->settings[$model->alias]['mode'])
+                        ) {
+                            return false;
+                        }
 
                         if (file_exists($filePath)) {
                             /**
@@ -818,6 +812,9 @@ class BindableBehavior extends ModelBehavior {
 
         } else if (isset($data[$model->primaryKey])) {
             $data = $tmpData[0][$model->alias];
+
+        } else if (isset($data[0][$model->primaryKey])) {
+            $data = Set::extract($tmpData, '{n}.' . $model->alias);
 
         } else {
             $data = $tmpData;
