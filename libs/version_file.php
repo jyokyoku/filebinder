@@ -1,14 +1,24 @@
 <?php
 class VersionFile extends Object
 {
-	public static function create($filePath, $versionDir, array $instructions = array(), array $options = array())
+	public static function create($filePath, $dir, $instructions = array(), array $options = array())
 	{
 		$options += array('mode' => 0644, 'dirMode' => 0755);
 
+		if (is_string($instructions)) {
+			$definedVersions = Configure::read('Filebinder.version.' . Mime_Type::guessName($filePath));
+
+			if (!empty($definedVersions[$instructions]) && is_array($definedVersions[$instructions])) {
+				$instructions = $definedVersions[$instructions];
+			}
+		}
+
 		if (
 			!is_file($filePath)
-			|| empty($versionDir)
-			|| (!is_dir($versionDir) && !mkdir($versionDir, $options['dirMode'], true))
+			|| !is_array($instructions)
+			|| empty($instructions)
+			|| empty($dir)
+			|| (!is_dir($dir) && !mkdir($dir, $options['dirMode'], true))
 		) {
 			return false;
 		}
@@ -20,7 +30,7 @@ class VersionFile extends Object
 			$extension = Mime_Type::guessExtension($filePath);
 		}
 
-		$versionFilePath = $versionDir . DS . Security::hash(serialize($instructions), 'md5') . '.' . $extension;
+		$versionFilePath = $dir . DS . Security::hash(serialize($instructions), 'md5') . '.' . $extension;
 		$cached = false;
 
 		if (is_file($versionFilePath)) {

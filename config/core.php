@@ -1,5 +1,8 @@
 <?php
-$mm = dirname(dirname(__FILE__)) . DS . 'libs' . DS . 'mm';
+/**
+ * Setup the `mm` library
+ */
+$mm = dirname(dirname(__FILE__)) . DS . 'vendors' . DS . 'mm';
 
 if (strpos(ini_get('include_path'), $mm) === false) {
 	ini_set('include_path', ini_get('include_path') . PATH_SEPARATOR . $mm . DS . 'src');
@@ -26,3 +29,33 @@ Media_Process::config(array(
 Media_Info::config(array(
 	'image' => array('ImageBasic'),
 ));
+
+/**
+ * Image file versions
+ */
+Configure::write('Filebinder.version.image', array(
+	'thumbnail' => array(
+		'fit' => array(100 ,100),
+		'convert' => 'image/png'
+	),
+));
+
+/**
+ * Video file versions
+ */
+Configure::write('Filebinder.version.video', array());
+
+/**
+ * Audio file versions
+ */
+Configure::write('Filebinder.version.audio', array());
+
+/**
+ * Document file versions
+ */
+Configure::write('Filebinder.version.document', array());
+
+/**
+ * Generic file versions
+ */
+Configure::write('Filebinder.version.generic', array());

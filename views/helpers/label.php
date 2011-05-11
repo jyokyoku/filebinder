@@ -63,10 +63,14 @@ class LabelHelper extends AppHelper {
      *   require APP . 'plugins/filebinder/config/core.php';
      *
      * For example, resize image to `200x200` pixel, and convert to `png`:
-     *   $options['conversion'] = array(
+     *   $options['version'] = array(
      *       'fit' => array(200, 200),
      *       'convert' => 'image/png'
      *   );
+     *
+     * Or, if defined instructions of `thumbnail`,
+     *
+     *   $options['version'] = 'thubmnail';
      *
      * @param array $file
      * @param array $options
@@ -74,7 +78,7 @@ class LabelHelper extends AppHelper {
      * @link http://github.com/davidpersson/mm
      */
     function _makeSrc($file = null, $options = array()){
-        $options += array('prefix' => '', 'conversion' => array(), 'url' => array());
+        $options += array('prefix' => '', 'version' => array(), 'url' => array());
         $filePath = false;
 
         if (!empty($file['file_path'])) {
@@ -89,7 +93,7 @@ class LabelHelper extends AppHelper {
             return null;
         }
 
-        if ($options['conversion'] && !empty($file['cache_dir']) && strpos($file['cache_dir'], WWW_ROOT) === 0) {
+        if ($options['version'] && !empty($file['cache_dir']) && strpos($file['cache_dir'], WWW_ROOT) === 0) {
             if (!class_exists('VersionFile')) {
                 App::import('Lib', 'Filebinder.VersionFile');
             }
@@ -99,7 +103,7 @@ class LabelHelper extends AppHelper {
                 'dirMode' => $file['dir_mode']
             );
 
-            if (!$filePath = VersionFile::create($filePath, $file['cache_dir'], (array)$options['conversion'], $fileOptions)) {
+            if (!$filePath = VersionFile::create($filePath, $file['cache_dir'], $options['version'], $fileOptions)) {
                 return null;
             }
         }
