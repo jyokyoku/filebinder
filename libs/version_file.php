@@ -5,14 +5,6 @@ class VersionFile extends Object
 	{
 		$options += array('mode' => 0644, 'dirMode' => 0755);
 
-		if (is_string($instructions)) {
-			$definedVersions = Configure::read('Filebinder.version.' . Mime_Type::guessName($filePath));
-
-			if (!empty($definedVersions[$instructions]) && is_array($definedVersions[$instructions])) {
-				$instructions = $definedVersions[$instructions];
-			}
-		}
-
 		if (
 			!is_file($filePath)
 			|| !is_array($instructions)

@@ -15,7 +15,7 @@ class LabelHelper extends AppHelper {
         if (!$url) {
             return empty($options['noFile']) ? '' : $options['noFile'];
         }
-        unset($options['noFile'], $options['prefix'], $options['conversion'], $options['url']);
+        unset($options['noFile'], $options['prefix'], $options['version'], $options['url']);
         return $this->Html->image($url, $options);
     }
 
@@ -32,7 +32,7 @@ class LabelHelper extends AppHelper {
             return empty($options['noFile']) ? '' : $options['noFile'];
         }
         $fileTitle = empty($options['title']) ? $file['file_name'] : $options['title'];
-        unset($options['title'], $options['noFile'], $options['prefix'], $options['conversion'], $options['url']);
+        unset($options['title'], $options['noFile'], $options['prefix'], $options['version'], $options['url']);
         return $this->Html->link($fileTitle, $url, $options);
     }
 
@@ -48,7 +48,7 @@ class LabelHelper extends AppHelper {
         if (!$url) {
             return empty($options['noFile']) ? '' : $options['noFile'];
         }
-        unset($options['noFile'], $options['prefix'], $options['conversion'], $options['url']);
+        unset($options['noFile'], $options['prefix'], $options['version'], $options['url']);
         return $this->Html->url($url, $options);
     }
 
@@ -56,7 +56,7 @@ class LabelHelper extends AppHelper {
      * _makeSrc
      *
      * Generating the file path.
-     * If set `conversion` option, make cache file. (PHP >= 5.2)
+     * If set `version` option, make cache file. (PHP >= 5.2)
      *
      * If using cache, load the plugin's configuration:
      *   //Within your app's bootstrap.php
@@ -94,7 +94,20 @@ class LabelHelper extends AppHelper {
         }
 
         if ($options['version'] && !empty($file['cache_dir']) && strpos($file['cache_dir'], WWW_ROOT) === 0) {
-            if (!class_exists('VersionFile')) {
+            $instructions = array();
+
+            if (is_string($options['version'])) {
+                $definedVersions = Configure::read('Filebinder.version.' . Mime_Type::guessName($filePath));
+
+                if (!empty($definedVersions[$options['version']]) && is_array($definedVersions[$options['version']])) {
+                    $instructions = $definedVersions[$options['version']];
+                }
+
+            } else if (is_array($options['version'])) {
+                $instructions = $options['version'];
+            }
+
+            if (!class_exists('versionFile')) {
                 App::import('Lib', 'Filebinder.VersionFile');
             }
 
@@ -103,7 +116,7 @@ class LabelHelper extends AppHelper {
                 'dirMode' => $file['dir_mode']
             );
 
-            if (!$filePath = VersionFile::create($filePath, $file['cache_dir'], $options['version'], $fileOptions)) {
+            if (!$filePath = VersionFile::create($filePath, $file['cache_dir'], $instructions, $fileOptions)) {
                 return null;
             }
         }
