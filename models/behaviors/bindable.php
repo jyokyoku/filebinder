@@ -678,7 +678,7 @@ class BindableBehavior extends ModelBehavior {
      */
     function bindFile(&$model, $data = array()) {
         $modelName = $model->alias;
-        if (empty($model->bindFields) || empty($data)) {
+        if (empty($model->bindFields) || empty($data) || !is_array($data)) {
             return $data;
         }
 
@@ -698,6 +698,13 @@ class BindableBehavior extends ModelBehavior {
             foreach ($data as $i => $_data) {
                 $tmpData[$i] = array($model->alias => $_data);
             }
+
+        } else if (isset($data[0][$model->alias])) {
+            foreach ($data as $i => $_data) {
+                $data[$i] = $this->bindFile($model, $_data);
+            }
+
+            return $data;
 
         } else {
             $tmpData = $data;
@@ -839,10 +846,10 @@ class BindableBehavior extends ModelBehavior {
                    : $this->settings[$model->alias]['cacheDirLevel'];
 
             for ($i = 0; $i < $level; $i++) {
-                $cacheBaseDir .= $hash{$i};
+                $cacheBaseDir .= $hash{$i} . DS;
             }
 
-            $cacheBaseDir .= DS . substr($hash, $i + 1);
+            $cacheBaseDir .= substr($hash, $i + 1);
 
         } else {
             $cacheBaseDir .= $hash;
