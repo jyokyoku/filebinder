@@ -73,7 +73,7 @@ class BindableBehavior extends ModelBehavior {
         if (empty($model->bindFields)) {
             return $queryData;
         }
-        $this->bindFields = Set::combine($model->bindFields, '/field' , '/');
+        $this->runtime[$model->alias]['bindFields'] = Set::combine($model->bindFields, '/field' , '/');
         if (empty($queryData['fields'])) {
             return $queryData;
         }
@@ -81,11 +81,11 @@ class BindableBehavior extends ModelBehavior {
         $modelName = $model->alias;
         $fields = (array) $queryData['fields'];
         $flip = array_flip($fields);
-        foreach ($this->bindFields as $fieldName => $data) {
+        foreach ($this->runtime[$model->alias]['bindFields'] as $fieldName => $data) {
             unset($flip[$modelName . '.' . $fieldName]);
             unset($flip[$fieldName]);
             if (!in_array($modelName . '.' . $fieldName, $fields) && !in_array($fieldName, $fields)) {
-                unset($this->bindFields[$fieldName]);
+                unset($this->runtime[$model->alias]['bindFields'][$fieldName]);
             }
         }
         $queryData['fields'] = array_flip($flip);
@@ -674,7 +674,7 @@ class BindableBehavior extends ModelBehavior {
      * Bind file fields
      *
      * @param &$model
-     * @param $data The
+     * @param $data
      */
     function bindFile(&$model, $data = array()) {
         $modelName = $model->alias;
@@ -710,7 +710,9 @@ class BindableBehavior extends ModelBehavior {
             $tmpData = $data;
         }
 
-        $bindFields = empty($this->bindFields) ? Set::combine($model->bindFields, '/field' , '/') : $this->bindFields;
+        $bindFields = empty($this->runtime[$model->alias]['bindFields'])
+                    ? Set::combine($model->bindFields, '/field' , '/')
+                    : $this->runtime[$model->alias]['bindFields'];
         $model_ids = Set::extract('/' . $modelName . '/' . $this->runtime[$model->alias]['primaryKey'], $tmpData);
 
         if (!$model_ids) {
